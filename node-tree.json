@@ -1,0 +1,24 @@
+{
+  "team": [
+    "5d2a6dada58cf91515292c87"
+  ],
+  "folder": {
+    "items": [
+      "id",
+      "name",
+      "jsonType",
+      "parentId"
+    ]
+  },
+  "document-summary": [
+    "description",
+    "id",
+    "name",
+    "parentId"
+  ],
+  "start": {
+    "name": "FTC Robotics Parts Users",
+    "id": "5d2a6dada58cf91515292c87",
+    "resourceType": "team"
+  }
+}
