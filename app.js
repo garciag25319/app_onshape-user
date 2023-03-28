@@ -19,6 +19,7 @@ app.post('/onshape-authentication', authenticate.processAuthRequest());
 
 app.get('/onshape',authenticate.isAuthenticated(), fetch.index());
 
+app.get('/onshape-thumbnail',authenticate.isAuthenticated(),fetch.thumnailRequested())
 // var log = console.log;
 // console.log = function() {
 //   log.apply(console, arguments);

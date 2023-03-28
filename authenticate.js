@@ -8,6 +8,8 @@ class OnshapeAuth {
     this.refreshToken = null;
     this.tokenTime = null;
 
+    this.expires_in = 0;
+    this.expire_buffer = 60*5;
     this.refreshEvery = 10000//1000*60*50;
   }
   _processAuthRequest(req, res) {
@@ -16,8 +18,8 @@ class OnshapeAuth {
     
     if (req.body.key != process.env.SPICE_KEY) return res.send("<t>Error</t>");
 
-    this.token = req.body.token;
-    this.refreshToken = req.body.token;
+    this.setToken(req.body.token);
+    this.refreshToken = req.body.refreshToken;
     res.status(200).send({message:"success"})
   }
   processAuthRequest(){
@@ -25,13 +27,14 @@ class OnshapeAuth {
   }
   setToken(token) {
     this.currentToken = token;
+    const self = this;
 
     this.refreshTimeout = setTimeout(()=>{
-      this.refreshToken().then(function(err){
+      self.fetchRefreshToken().then(function(err){
         //max tries
         if(err)this.refreshToken();
       });
-    },this.refreshEvery)
+    },(this.expires_in && (this.expires_in-this.expire_buffer)*1000) || this.refreshEvery)
   }
   getToken(){
     return this.currentToken
@@ -41,20 +44,22 @@ class OnshapeAuth {
   }
   _authenticate(req,res,next){
     console.log("authenticating");
-    if (!this/* || !this.token*/) return res.json({message:"Request cannot currently be processed."});
-    req.token = this.token;
+    if (!this/* || !this.token*/) return res.status(400).send({message:"Request cannot currently be processed."});
+    req.token = this.currentToken;
     next()
   }
-  async refreshToken() {
+  async fetchRefreshToken() {
     //create request
-    axios.post('https://oauth.onshape.com/oauth/token?grant_type=refresh_token&refresh_token=' + this.getToken() + '&client_id=' + process.env.CLIENT_ID + '&client_secret=' + process.env.CLIENT_SECRET, {},{
+    const self = this;
+    axios.post('https://oauth.onshape.com/oauth/token?grant_type=refresh_token&refresh_token=' + encodeURIComponent(this.refreshToken) + '&client_id=' + encodeURIComponent(process.env.CLIENT_ID) + '&client_secret=' + encodeURIComponent(process.env.CLIENT_SECRET), {},{
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       }
     })
     .then(function (response) {
       console.log(response);
-      setToken(response.data.access_token);
+      self.expires_in = response.data.expires_in;
+      self.setToken(response.data.access_token);
     })
     .catch(function (error) {
       console.log(error);
