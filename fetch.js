@@ -1,12 +1,14 @@
 const axios = require('axios');
 const nodetreebase = require('./node-tree.json');
-const fs = require('fs');
+const fetch = require('node-fetch');
 
 const thumbnailConfig = { document: 'string', workspace: 'string', size: 'string', t: 'string' };
+const fileConfig = { document: 'string' };
 
 class Fetch {
   constructor() {
 
+    this.processingFileRequest = false;
   }
   _index(req, res) {
     let query = req.query;
@@ -18,7 +20,7 @@ class Fetch {
     let type = query.type;
     this.get(req.token, url, type).then((value) => {
       // console.log(value)
-      this.thin(value.data, req.token).then((value) => res.json(value));
+      this.thin(value.data).then((value) => res.json(value));
     }).catch((err) => {
       console.log(err);
       res.status(404).send({ error: err });
@@ -41,33 +43,248 @@ class Fetch {
     let type;
     for (let i in template) {
       type = template[i];
-      if (check[i] === undefined || (check[i] && typeof(check[i]) != type)) return false;
+      if (check[i] === undefined || (check[i] && typeof (check[i]) != type)) return false;
     }
     return true;
   }
+  fileRequested() {
+    return this._fileRequested.bind(this);
+  }
+  _fileRequested(req, res) {
+    const query = req.query;
+    console.log(query);
+    if (!this.validateRequestBody(query, fileConfig)) return res.status(400).send({ message: "Invalid request" });
+    this.fileAccessAllowed(query.document, req.token).then((good) => {
+      console.log(good);
+      if (!good) return res.status(401).send({ message: "Haha, you thought.ඞ" });
+      // this.shareFile(query.document, query.email, req.token).then((response) => {
+      //   res.status(200).send({ message: "Document successfully shared with " + query.email });
+      // });
+      this.downloadFile(query.document, req.token).then((response) => {
+        if (response == false) return res.status(400).json("Invalid part");
+        // res.setHeader('content-disposition',response.headers['content-disposition'])
+        // res.setHeader('content-type',response.headers['content-type'])
+        response.headers.forEach((v, n) => (['content-disposition', 'content-type'].indexOf(n) != -1 && res.setHeader(n, v)));
+        console.log(res.getHeaders());
+
+        // console.log(response.body)
+        response.body.pipe(res);
+      });
+    });
+  }
+  async downloadFile(dID, token) {
+    let docInfo = await axios({ url: "https://cad.onshape.com/api/documents/" + dID, headers: { Authorization: "Bearer " + token } });
+    docInfo = docInfo.data;
+    docInfo;
+    const wID = docInfo.defaultWorkspace.id;
+    // const eID = docInfo.defaultElementId
+    console.log(wID);
+    // if(eID == null){
+    //   console.log(docInfo)
+    //   return new Promise((res,rej)=>{
+    //     res(false)
+    //   })
+    // }
+    let url = "https://cad.onshape.com/api/parts/d/" + dID + "/w/" + wID + "?withThumbnails=false&includePropertyDefaults=false";//"?elementId=" + eID +"&withThumbnails=false&includePropertyDefaults=false"
+
+    console.log(url);
+    const partInfo = (await axios({ url, headers: { Authorization: "Bearer " + token } })).data;
+    if (partInfo == null) {
+      return new Promise((res, rej) => {
+        res(false);
+      });
+    }
+    if (partInfo.length == 1) {
+      const partID = partInfo[0].partId;
+      const eID = partInfo[0].elementId;
+      console.log(eID, partID);
+      url = "https://cad.onshape.com/api/parts/d/" + dID + "/w/" + wID + "/e/" + eID + "/partid/" + partID + "/stl?mode=text&grouping=true&scale=1&units=inch";
+      console.log(url);
+      return fetch(url, { headers: { Authorization: "Bearer " + token } });
+    } else if (partInfo.length > 1) {
+      let partIds = '';
+      partInfo.forEach(info =>{partIds += info.partId + "%2C"});
+      partIds = partIds.slice(0, -3);
+      const eID = partInfo[0].elementId;
+      url = "https://cad.onshape.com/api/partstudios/d/" + dID + "/w/" + wID + "/e/" + eID + "/stl?partIds=" + partIds + "&mode=text&grouping=true&scale=1&units=inch";
+      console.log(url);
+      return fetch(url, { headers: { Authorization: "Bearer " + token } });
+    } else {
+
+    }
+
+  }
+  // _fileRequested(req, res) {
+  //   const query = req.query;
+  //   console.log(query);
+  //   if (!this.validateRequestBody(query, fileConfig)) return res.status(400).send({ message: "Invalid request" });
+  //   this.fileAccessAllowed(query.document, req.token).then((good) => {
+  //     console.log(good);
+  //     if (!good) return res.status(401).send({ message: "Haha, you thought.ඞ" });
+  //     // this.shareFile(query.document, query.email, req.token).then((response) => {
+  //     //   res.status(200).send({ message: "Document successfully shared with " + query.email });
+  //     // });
+  //     this.downloadFile(query.document, req.token).then((response) => {
+  //       if (response == false) return res.status(400).json("Invalid part");
+  //       if (!response.headers) {
+  //         const filename = "assembly";
+  //         res.setHeader('content-disposition', `attachment; filename="${filename}".zip`);
+  //         res.setHeader('content-type', 'application/zip');
+  //         res.send(response);
+  //       } else {
+  //         // res.setHeader('content-disposition',response.headers['content-disposition'])
+  //         // res.setHeader('content-type',response.headers['content-type'])
+  //         response.headers.forEach((v, n) => (['content-disposition', 'content-type'].indexOf(n) != -1 && res.setHeader(n, v)));
+  //         console.log(res.getHeaders());
+
+  //         // console.log(response.body)
+  //         response.body.pipe(res);
+  //       }
+  //     });
+  //   });
+  // }
+  // async downloadFile(dID, token) {
+  //   let docInfo = await axios({ url: "https://cad.onshape.com/api/documents/" + dID, headers: { Authorization: "Bearer " + token } });
+  //   docInfo = docInfo.data;
+  //   docInfo;
+  //   const wID = docInfo.defaultWorkspace.id;
+  //   // const eID = docInfo.defaultElementId
+  //   console.log(wID);
+  //   // if(eID == null){
+  //   //   console.log(docInfo)
+  //   //   return new Promise((res,rej)=>{
+  //   //     res(false)
+  //   //   })
+  //   // }
+  //   let url = "https://cad.onshape.com/api/parts/d/" + dID + "/w/" + wID + "?withThumbnails=false&includePropertyDefaults=false";//"?elementId=" + eID +"&withThumbnails=false&includePropertyDefaults=false"
+
+  //   console.log(url);
+  //   const partInfo = (await axios({ url, headers: { Authorization: "Bearer " + token } })).data;
+  //   if (partInfo == null) {
+  //     return new Promise((res, rej) => {
+  //       res(false);
+  //     });
+  //   }
+  //   if (partInfo.length == 1) {
+  //     const partID = partInfo[0].partId;
+  //     const eID = partInfo[0].elementId;
+  //     console.log(eID, partID);
+  //     url = "https://cad.onshape.com/api/parts/d/" + dID + "/w/" + wID + "/e/" + eID + "/partid/" + partID + "/stl?mode=text&grouping=true&scale=1&units=inch";
+  //     console.log(url);
+  //     return fetch(url, { headers: { Authorization: "Bearer " + token } });
+  //   } else if (partInfo.length > 1) {
+  //     console.log("Creating zip file");
+  //     console.log(partInfo.length)
+  //     return new Promise((res, rej) => {
+  //       let completed = 0;
+  //       partInfo.forEach((info) => {
+  //         const partID = info.partId;
+  //         const eID = info.elementId;
+  //         console.log(eID, partID);
+  //         url = "https://cad.onshape.com/api/parts/d/" + dID + "/w/" + wID + "/e/" + eID + "/partid/" + partID + "/stl?mode=text&grouping=true&scale=1&units=inch";
+  //         console.log(url);
+  //         fetch(url, { headers: { Authorization: "Bearer " + token } }).then((response) => {
+  //           // console.log(response.body);
+  //           // console.log(response.body.toString());
+  //           this.ungzip(response.body).then((buffer) => {
+
+  //             console.log(typeof(buffer),buffer.length)
+  //             zip.file(info.name + '__.txt', buffer);
+  //             console.log(completed);
+  //             completed++;
+  //             if (completed == partInfo.length) {
+  //               res(zip.generate({ base64: false, compression: 'DEFLATE' }));
+  //             }
+  //           });
+  //         });
+  //       });
+  //     });
+
+
+  //   } else {
+
+  //   }
+
+  // }
+  // async ungzip(gzip) {
+  //   return new Promise((res, rej) => {
+  //     console.log("Unzip requested")
+  //     var bufs = [];
+  //     gzip.on('data', function (d) { bufs.push(d); });
+  //     gzip.on('end', function () {
+  //       var buf = Buffer.concat(bufs);
+  //       console.log(buf.length)
+  //       res(buf)
+  //       // zlib.gunzip(buf, (err, buffer) => {
+  //       //   console.log(err && err.length)
+  //       //   // console.log(buffer && buffer.length)
+  //       //   res(buffer);
+  //       // });
+  //     });
+  //   })
+  // }
+  // if(this._fileRequested)return res.status(406).send({message:"Please try again in 20 seconds"})
+  // this._fileRequested = true;
+  // setTimeout(()=>this._fileRequested = false,20*1000)
+  // this.getUserId(req.token).then((uid)=>{
+
+  // });
+  async fileAccessAllowed(id, token) {
+    const url = "https://cad.onshape.com/api/documents/" + id;
+    let response = await axios({ url, headers: { Authorization: "Bearer " + token } });
+    const parentId = response.data.parentId;
+    if (nodetreebase.allowed.indexOf(parentId)) return true;
+    console.log(parentId);
+    response = await this.get(token, parentId, "folder");
+    const path = response.body.pathToRoot;
+    console.log(path);
+    let valid = false;
+    path.forEach((elem) => { if (nodetreebase.allowed.indexOf(elem.id) != -1) valid = true; });
+    return valid;
+    // }).catch((err) => {
+    //   console.log(err);
+    //   return false;
+    // });
+  }
+  async shareFile(dID, email, token) {
+    return await axios.post('https://cad.onshape.com/api/documents/' + dID + '/share', { documentId: dID, permissionSet: ["READ"], entries: [{ entryType: 0, email }] }, { headers: { Authorization: "Bearer " + token } });
+  }
+  // async getFile(dID,wID,token){
+  //   let url = 'https://cad.onshape.com/api/documents/d/' + dID + '/w/' + wID + '/translate';
+  //   return fetch(url, { headers: { Authorization: "Bearer " + token } });
+  // }
+  // async setUserSettings(uid){
+  //   return axios.post('https://cad.onshape.com/api/users/' + uid + '/settings',{})
+  // }
+  // async getUserId(){
+  //   return await fetch('https://cad.onshape.com/api/users/sessioninfo', { headers: { Authorization: "Bearer " + token } }).body.id;
+  // }
   thumnailRequested() {
     return this._thumnailRequested.bind(this);
   }
   _thumnailRequested(req, res) {
     const body = req.query;
     // console.log(body)
-    console.log(this.validateRequestBody(body, thumbnailConfig))
+    // console.log(this.validateRequestBody(body, thumbnailConfig));
     if (!this.validateRequestBody(body, thumbnailConfig)) return res.status(400).send({ message: "Invalid request" });
     this.getThumbnail(body.document, body.workspace, body.size, body.t, req.token).then((response) => {
-      res.set("Content-Type", "image/png");
-      console.log(response)
-      res.send(response.data);
+      // res.set("Content-Type", "image/png");
+      // console.log(response);
+      // res.send(response.data);
+      response.headers.forEach((v, n) => res.setHeader(n, v));
+      response.body.pipe(res);
     }).catch(() => {
 
     });
   }
   async getThumbnail(dID, wID, size, t, token) {
     let url = 'https://cad.onshape.com/api/thumbnails/d/' + dID + '/w/' + wID + '/s/' + size + "?t=" + t;
-    const res = await axios({ url, headers: { Authorization: "Bearer " + token, } });
+    return fetch(url, { headers: { Authorization: "Bearer " + token } });
+    // const res = await axios({ url, headers: { Authorization: "Bearer " + token, } });
     // console.log(res);
-    return res;
+    // return res;
   }
-  async thin(nodetree, token) {
+  async thin(nodetree) {
     const result = {};
     result.items = [];
     result.href = nodetree.href;
@@ -75,7 +292,13 @@ class Fetch {
       result.pathToRoot = [];
       nodetree.pathToRoot.forEach((elem) => {
         if (elem.resourceType == "magic" || elem.resourceType == "team") return;
-        result.pathToRoot.push({ name: elem.name, id: elem.id, resourceType: elem.resourceType });
+        const obj = {};
+        // result.pathToRoot.push({ name: elem.name, id: elem.id, resourceType: elem.resourceType });
+        for (let i in nodetreebase.return_values.folders) {
+          const type = nodetreebase.return_values.folders[i];
+          obj[type] = elem[type] || "";
+        }
+        result.pathToRoot.push(obj);
       });
       result.pathToRoot.push(nodetreebase.start);
     }
@@ -85,13 +308,18 @@ class Fetch {
     const doc_re = /\/d\/(\w+)/;
     const wor_re = /\/w\/(\w+)/;
     const siz_re = /\/s\/(\w+)/;
-    const t_re =/t\=(\w+)/;
+    const t_re = /t\=(\w+)/;
     // console.log(nodetree)
     for (let i in nodetree.items) {
       // if(elem.jsonType == "document-summary")return;
       elem = nodetree.items[i];
-      obj = { jsonType: elem.jsonType, name: elem.name, description: elem.description || "", id: elem.id };
-      
+      // obj = { jsonType: elem.jsonType, name: elem.name, description: elem.description || "", id: elem.id };
+      obj = {};
+      for (let i in nodetreebase.return_values.items) {
+        const type = nodetreebase.return_values.items[i];
+        obj[type] = elem[type] || "";
+      }
+
       if (elem.thumbnail && elem.thumbnail.sizes && elem.thumbnail.sizes[0]) {
         const str = elem.thumbnail.sizes[0].href;
         href = "/onshape-thumbnail?document=";
@@ -102,7 +330,7 @@ class Fetch {
         href += siz_re.exec(str)[1];
         href += "&t=";
         href += t_re.exec(str)[1];
-        obj.thumbnail = href; 
+        obj.thumbnail = href;
       }
       result.items.push(obj);
     };

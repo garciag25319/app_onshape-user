@@ -2,12 +2,18 @@
   "team": [
     "5d2a6dada58cf91515292c87"
   ],
-  "folder": {
+  "return_values": {
     "items": [
       "id",
       "name",
       "jsonType",
-      "parentId"
+      "description",
+      "defaultWorkspace"
+    ],
+    "folders":[
+      "name",
+      "id",
+      "resourceType"
     ]
   },
   "document-summary": [
@@ -20,5 +26,16 @@
     "name": "FTC Robotics Parts Users",
     "id": "5d2a6dada58cf91515292c87",
     "resourceType": "team"
-  }
+  },
+  "allowed":[
+    "4e8628e24c7fb6ed3907920a",
+    "5249e318fee36b57fec2e64d",
+    "dfe0ed192594de895d886ae3",
+    "7a0426605ee9a28bf6dcf6be",
+    "15ec16d38cdbbccc3d73eab8",
+    "94c291c1eedd1f2c6a179d7c",
+    "739045f620560df001827ea2",
+    "2acc0cb4a6af86c9ed045305",
+    "4ef7ea19cd1accf2424a8b40"
+  ]
 }
