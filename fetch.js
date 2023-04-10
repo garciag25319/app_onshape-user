@@ -18,8 +18,11 @@ class Fetch {
     if (!query || Object.keys(query).length == 0 || !query.url) query = { url: nodetreebase.team[0], type: "team" };
     let url = query.url;
     let type = query.type;
-    this.get(req.token, url, type).then((value) => {
+    let getqueries;
+    if(query.page)getqueries = "?getPathToRoot=true&offset=" + query.page*50 + "&limit=50&sortColumn=modifiedAt&sortOrder=desc"
+    this.get(req.token, url, type,getqueries).then((value) => {
       // console.log(value)
+      if(url == nodetreebase.team[0])value.data.items = value.data.items.filter((elem)=>elem.jsonType != "document-summary")
       this.thin(value.data).then((value) => res.json(value));
     }).catch((err) => {
       console.log(err);
@@ -30,13 +33,13 @@ class Fetch {
   index() {
     return this._index.bind(this);
   }
-  async get(token, url, type) {
+  async get(token, url, type,getqueries) {
     let baseURL = "https://cad.onshape.com/api/globaltreenodes/";
     // baseURL = "https://httpbin.org/post/"
     // url = "post"
     if (!(type == "folder" || type == "document" || type == "team")) return false;
     baseURL += type;
-    const queries = "?getPathToRoot=true&limit=50&sortColumn=modifiedAt&sortOrder=desc";
+    const queries = getqueries || "?getPathToRoot=true&limit=50&sortColumn=modifiedAt&sortOrder=desc";
     return await axios({ baseURL, url: url + queries, headers: { Authorization: "Bearer " + token } });
   }
   validateRequestBody(check, template) {
@@ -55,20 +58,20 @@ class Fetch {
     console.log(query);
     if (!this.validateRequestBody(query, fileConfig)) return res.status(400).send({ message: "Invalid request" });
     this.fileAccessAllowed(query.document, req.token).then((good) => {
-      console.log(good);
       if (!good) return res.status(401).send({ message: "Haha, you thought.ඞ" });
       // this.shareFile(query.document, query.email, req.token).then((response) => {
       //   res.status(200).send({ message: "Document successfully shared with " + query.email });
       // });
       this.downloadFile(query.document, req.token).then((response) => {
-        if (response == false) return res.status(400).json("Invalid part");
+        if (!response) return res.status(400).json("Invalid part");
         // res.setHeader('content-disposition',response.headers['content-disposition'])
         // res.setHeader('content-type',response.headers['content-type'])
         response.headers.forEach((v, n) => (['content-disposition', 'content-type'].indexOf(n) != -1 && res.setHeader(n, v)));
-        console.log(res.getHeaders());
-
         // console.log(response.body)
         response.body.pipe(res);
+      }).catch((err)=>{
+        console.log("Error happened")
+        return res.status(400).send({ message: "Invalid request" });
       });
     });
   }
@@ -78,7 +81,6 @@ class Fetch {
     docInfo;
     const wID = docInfo.defaultWorkspace.id;
     // const eID = docInfo.defaultElementId
-    console.log(wID);
     // if(eID == null){
     //   console.log(docInfo)
     //   return new Promise((res,rej)=>{
@@ -97,7 +99,6 @@ class Fetch {
     if (partInfo.length == 1) {
       const partID = partInfo[0].partId;
       const eID = partInfo[0].elementId;
-      console.log(eID, partID);
       url = "https://cad.onshape.com/api/parts/d/" + dID + "/w/" + wID + "/e/" + eID + "/partid/" + partID + "/stl?mode=text&grouping=true&scale=1&units=inch";
       console.log(url);
       return fetch(url, { headers: { Authorization: "Bearer " + token } });
@@ -230,14 +231,13 @@ class Fetch {
 
   // });
   async fileAccessAllowed(id, token) {
-    const url = "https://cad.onshape.com/api/documents/" + id;
+    const url = "https://cad.onshape.com/api/globaltreenodes/document/" + id + "/parentInfo";
     let response = await axios({ url, headers: { Authorization: "Bearer " + token } });
-    const parentId = response.data.parentId;
-    if (nodetreebase.allowed.indexOf(parentId)) return true;
-    console.log(parentId);
+    const parentId = response.data.id;
+    if(response.data.jsonType == "magic")return false
+    if (nodetreebase.allowed.indexOf(parentId) != -1) return true;
     response = await this.get(token, parentId, "folder");
-    const path = response.body.pathToRoot;
-    console.log(path);
+    const path = response.data.pathToRoot;
     let valid = false;
     path.forEach((elem) => { if (nodetreebase.allowed.indexOf(elem.id) != -1) valid = true; });
     return valid;
