@@ -2,7 +2,9 @@ const axios = require('axios');
 const nodetreebase = require('./node-tree.json');
 const fetch = require('node-fetch');
 
+
 const thumbnailConfig = { document: 'string', workspace: 'string', size: 'string', t: 'string' };
+const exportConfig = {units:["meter", "centimeter", "millimeter", "inch", "foot", "yard"],grouping:['true','false']}
 const fileConfig = { document: 'string' };
 
 class Fetch {
@@ -25,8 +27,7 @@ class Fetch {
       if(url == nodetreebase.team[0])value.data.items = value.data.items.filter((elem)=>elem.jsonType != "document-summary")
       this.thin(value.data).then((value) => res.json(value));
     }).catch((err) => {
-      console.log(err);
-      res.status(404).send({ error: err });
+      res.status(404).send({ error:"Server lost connection" });
     });
     // res.status(200).send('<t>statusooga booga"</t>');
   }
@@ -62,20 +63,20 @@ class Fetch {
       // this.shareFile(query.document, query.email, req.token).then((response) => {
       //   res.status(200).send({ message: "Document successfully shared with " + query.email });
       // });
-      this.downloadFile(query.document, req.token).then((response) => {
+      this.downloadFile(query.document, req.token,query.queries).then((response) => {
         if (!response) return res.status(400).json("Invalid part");
-        // res.setHeader('content-disposition',response.headers['content-disposition'])
-        // res.setHeader('content-type',response.headers['content-type'])
         response.headers.forEach((v, n) => (['content-disposition', 'content-type'].indexOf(n) != -1 && res.setHeader(n, v)));
-        // console.log(response.body)
+        res.setHeader("Access-Control-Expose-Headers","file-extension")
+        res.setHeader("file-extension",query.queries.grouping == "true"? "stl":"zip")
         response.body.pipe(res);
       }).catch((err)=>{
+        console.log(err)
         console.log("Error happened")
         return res.status(400).send({ message: "Invalid request" });
       });
     });
   }
-  async downloadFile(dID, token) {
+  async downloadFile(dID, token,queryRequests) {
     let docInfo = await axios({ url: "https://cad.onshape.com/api/documents/" + dID, headers: { Authorization: "Bearer " + token } });
     docInfo = docInfo.data;
     docInfo;
@@ -96,10 +97,19 @@ class Fetch {
         res(false);
       });
     }
+    let queries = []
+    if(queryRequests != null){
+      for(let key in queryRequests){
+        if(!exportConfig[key])continue
+        exportConfig[key].constructor === Array? exportConfig[key].indexOf(queryRequests[key]) != -1 && queries.push(key + "=" + queryRequests[key]) : typeof(queryRequests[key]) == exportConfig[key] && queries.push(key + "=" + queryRequests[key])
+      }
+    }
+    queries = queries.join("&")
+    console.log(queries)
     if (partInfo.length == 1) {
       const partID = partInfo[0].partId;
       const eID = partInfo[0].elementId;
-      url = "https://cad.onshape.com/api/parts/d/" + dID + "/w/" + wID + "/e/" + eID + "/partid/" + partID + "/stl?mode=text&grouping=true&scale=1&units=inch";
+      url = "https://cad.onshape.com/api/parts/d/" + dID + "/w/" + wID + "/e/" + eID + "/partid/" + partID + "/stl?mode=text&" + queries;
       console.log(url);
       return fetch(url, { headers: { Authorization: "Bearer " + token } });
     } else if (partInfo.length > 1) {
@@ -107,11 +117,9 @@ class Fetch {
       partInfo.forEach(info =>{partIds += info.partId + "%2C"});
       partIds = partIds.slice(0, -3);
       const eID = partInfo[0].elementId;
-      url = "https://cad.onshape.com/api/partstudios/d/" + dID + "/w/" + wID + "/e/" + eID + "/stl?partIds=" + partIds + "&mode=text&grouping=true&scale=1&units=inch";
+      url = "https://cad.onshape.com/api/partstudios/d/" + dID + "/w/" + wID + "/e/" + eID + "/stl?partIds=" + partIds + "&mode=text&" + queries;
       console.log(url);
       return fetch(url, { headers: { Authorization: "Bearer " + token } });
-    } else {
-
     }
 
   }
